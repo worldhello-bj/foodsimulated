@@ -1,6 +1,6 @@
 """
-游戏图形界面系统
-Game GUI System using tkinter
+游戏图形界面系统 - 集成游戏时间系统
+Game GUI System with Game Time Integration
 """
 
 import tkinter as tk
@@ -9,7 +9,7 @@ from tkinter import ttk, messagebox, scrolledtext
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timedelta
 import threading
 import time
 import tkinter.font as tkfont
@@ -20,6 +20,7 @@ from order_system import OrderGenerator, DeliverySimulator, OrderPriority
 from customer_interaction import CustomerInteractionSystem, DialogueMode
 from economic_system import StockMarket, InvestmentPortfolio, LotterySystem, ExpenseManager
 from skill_system import NightSchool, CareerTransition
+from game_time_system import GameTimeManager, TimeOfDay  # 导入时间系统
 
 class GameGUI:
     """游戏主界面"""
@@ -31,7 +32,7 @@ class GameGUI:
         self.root.configure(bg='#f0f0f0')
 
         default_font = tkfont.nametofont("TkDefaultFont")
-        default_font.configure(size=14)
+        default_font.configure(family="Arial", size=14)
         self.root.option_add("*Font", default_font)
 
         style = ttk.Style()
@@ -42,6 +43,10 @@ class GameGUI:
         style.configure('TNotebook.Tab', font=('Arial', 14, 'bold'))
         style.configure('Treeview.Heading', font=('Arial', 14, 'bold'))
         style.configure('Treeview', font=('Arial', 13))
+        
+        # === 新增：游戏时间管理器 ===
+        self.game_time = GameTimeManager(start_hour=9, start_minute=0)
+        self.game_time.add_time_callback(self)  # 注册时间事件回调
         
         # 游戏系统初始化
         self.game_state = GameState()
@@ -98,6 +103,17 @@ class GameGUI:
         game_menu.add_separator()
         game_menu.add_command(label="退出", command=self.quit_game)
         
+        # === 新增：时间控制菜单 ===
+        time_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="时间控制", menu=time_menu)
+        time_menu.add_command(label="正常速度 (1x)", command=lambda: self.set_time_speed(60))
+        time_menu.add_command(label="快速 (2x)", command=lambda: self.set_time_speed(120))
+        time_menu.add_command(label="极速 (5x)", command=lambda: self.set_time_speed(300))
+        time_menu.add_command(label="暂停时间", command=lambda: self.set_time_speed(0))
+        time_menu.add_separator()
+        time_menu.add_command(label="跳到下一小时", command=self.skip_to_next_hour)
+        time_menu.add_command(label="跳到高峰期", command=self.skip_to_peak_hour)
+        
         # 设置菜单
         settings_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="设置", menu=settings_menu)
@@ -111,15 +127,28 @@ class GameGUI:
         help_menu.add_command(label="关于", command=self.show_about)
     
     def setup_status_panel(self):
-        """设置状态面板"""
+        """设置状态面板 - 改进版本"""
+        # === 新增：游戏时间显示框 ===
+        time_frame = ttk.LabelFrame(self.left_panel, text="游戏时间", padding=10)
+        time_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        self.game_time_var = tk.StringVar()
+        self.game_date_var = tk.StringVar()
+        self.time_period_var = tk.StringVar()
+        
+        tk.Label(time_frame, textvariable=self.game_date_var, font=("Arial", 12, "bold")).pack()
+        tk.Label(time_frame, textvariable=self.game_time_var, font=("Arial", 14, "bold"), fg="blue").pack()
+        tk.Label(time_frame, textvariable=self.time_period_var).pack()
+        
         # 玩家信息框
         player_frame = ttk.LabelFrame(self.left_panel, text="玩家信息", padding=10)
         player_frame.pack(fill=tk.X, pady=(0, 10))
         
-        self.player_name_var = tk.StringVar(value="配送员小王")
-        self.level_var = tk.StringVar(value="等级: 1")
-        self.experience_var = tk.StringVar(value="经验: 0/100")
-        self.credit_var = tk.StringVar(value="信用分: 100")
+        # 初始化StringVar但不设置固定值
+        self.player_name_var = tk.StringVar()
+        self.level_var = tk.StringVar()
+        self.experience_var = tk.StringVar()
+        self.credit_var = tk.StringVar()
         
         tk.Label(player_frame, textvariable=self.player_name_var, font=("Arial", 12, "bold")).pack()
         tk.Label(player_frame, textvariable=self.level_var).pack()
@@ -130,9 +159,10 @@ class GameGUI:
         finance_frame = ttk.LabelFrame(self.left_panel, text="财务状况", padding=10)
         finance_frame.pack(fill=tk.X, pady=(0, 10))
         
-        self.delivery_coins_var = tk.StringVar(value="外卖币: ¥100.00")
-        self.savings_var = tk.StringVar(value="存款: ¥0.00")
-        self.debt_var = tk.StringVar(value="负债: ¥50,000.00")
+        # 初始化StringVar但不设置固定值
+        self.delivery_coins_var = tk.StringVar()
+        self.savings_var = tk.StringVar()
+        self.debt_var = tk.StringVar()
         
         tk.Label(finance_frame, textvariable=self.delivery_coins_var).pack()
         tk.Label(finance_frame, textvariable=self.savings_var).pack()
@@ -142,23 +172,25 @@ class GameGUI:
         status_frame = ttk.LabelFrame(self.left_panel, text="当前状态", padding=10)
         status_frame.pack(fill=tk.X, pady=(0, 10))
         
-        self.weather_var = tk.StringVar(value="天气: 晴天")
-        self.location_var = tk.StringVar(value="位置: 蚂蚁窝")
-        self.stamina_var = tk.StringVar(value="体力: 100/100")
-        self.time_var = tk.StringVar(value="时间: 09:00")
+        # 初始化StringVar但不设置固定值
+        self.weather_var = tk.StringVar()
+        self.location_var = tk.StringVar()
+        self.stamina_var = tk.StringVar()
+        self.delivery_status_var = tk.StringVar()  # 新增：配送状态
         
         tk.Label(status_frame, textvariable=self.weather_var).pack()
         tk.Label(status_frame, textvariable=self.location_var).pack()
         tk.Label(status_frame, textvariable=self.stamina_var).pack()
-        tk.Label(status_frame, textvariable=self.time_var).pack()
+        tk.Label(status_frame, textvariable=self.delivery_status_var, fg="green").pack()
         
         # 今日统计框
         stats_frame = ttk.LabelFrame(self.left_panel, text="今日统计", padding=10)
         stats_frame.pack(fill=tk.X, pady=(0, 10))
         
-        self.orders_today_var = tk.StringVar(value="完成订单: 0")
-        self.earnings_today_var = tk.StringVar(value="今日收入: ¥0.00")
-        self.tips_today_var = tk.StringVar(value="今日小费: ¥0.00")
+        # 初始化StringVar但不设置固定值
+        self.orders_today_var = tk.StringVar()
+        self.earnings_today_var = tk.StringVar()
+        self.tips_today_var = tk.StringVar()
         
         tk.Label(stats_frame, textvariable=self.orders_today_var).pack()
         tk.Label(stats_frame, textvariable=self.earnings_today_var).pack()
@@ -171,6 +203,395 @@ class GameGUI:
         ttk.Button(action_frame, text="休息恢复体力", command=self.rest_action).pack(fill=tk.X, pady=2)
         ttk.Button(action_frame, text="查看消息", command=self.view_messages).pack(fill=tk.X, pady=2)
         ttk.Button(action_frame, text="装备管理", command=self.equipment_management).pack(fill=tk.X, pady=2)
+        
+        # === 新增：测试功能按钮 ===
+        test_frame = ttk.LabelFrame(self.left_panel, text="测试功能", padding=10)
+        test_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        ttk.Button(test_frame, text="增加金币+100", command=self.test_add_coins).pack(fill=tk.X, pady=1)
+        ttk.Button(test_frame, text="消耗体力-20", command=self.test_consume_stamina).pack(fill=tk.X, pady=1)
+        ttk.Button(test_frame, text="完成订单+1", command=self.test_complete_order).pack(fill=tk.X, pady=1)
+        ttk.Button(test_frame, text="改变天气", command=self.test_change_weather).pack(fill=tk.X, pady=1)
+        ttk.Button(test_frame, text="推进1小时", command=self.test_advance_hour).pack(fill=tk.X, pady=1)
+        
+        # 当前配送状态
+        self.current_delivery = None
+        self.delivery_end_time = None
+        
+        # 首次更新显示
+        self.update_status_vars()
+    
+    # === 新增：时间相关方法 ===
+    def set_time_speed(self, multiplier):
+        """设置时间流逝速度"""
+        self.game_time.set_time_speed(multiplier)
+        if multiplier == 0:
+            messagebox.showinfo("时间控制", "时间已暂停")
+        else:
+            speed_name = {60: "正常", 120: "快速", 300: "极速"}.get(multiplier, "自定义")
+            messagebox.showinfo("时间控制", f"时间流逝速度设为 {speed_name}")
+    
+    def skip_to_next_hour(self):
+        """跳到下一小时"""
+        current_hour = self.game_time.current_game_time.hour
+        next_hour = (current_hour + 1) % 24
+        minutes_to_advance = (60 - self.game_time.current_game_time.minute)
+        self.game_time.advance_time(minutes_to_advance)
+        self.update_status_vars()
+        messagebox.showinfo("时间跳跃", f"时间已跳跃到 {next_hour}:00")
+    
+    def skip_to_peak_hour(self):
+        """跳到下一个高峰期"""
+        current_hour = self.game_time.current_game_time.hour
+        peak_hours = [7, 11, 17]  # 早餐、午餐、晚餐高峰期
+        
+        next_peak = None
+        for peak in peak_hours:
+            if peak > current_hour:
+                next_peak = peak
+                break
+        
+        if next_peak is None:
+            next_peak = peak_hours[0] + 24  # 明天的早高峰
+        
+        hours_to_advance = next_peak - current_hour
+        minutes_to_advance = hours_to_advance * 60 - self.game_time.current_game_time.minute
+        
+        self.game_time.advance_time(minutes_to_advance)
+        self.update_status_vars()
+        messagebox.showinfo("时间跳跃", f"时间已跳跃到高峰期 {next_peak % 24}:00")
+    
+    def on_hour_change(self, new_hour):
+        """时间事件回调：每小时触发"""
+        # 根据时间段调整体力消耗
+        if self.game_time.is_late_night():
+            if random.random() < 0.3:  # 30%概率在深夜消耗额外体力
+                self.game_state.attributes.stamina = max(0, self.game_state.attributes.stamina - 2)
+        
+        # 高峰期可能有更多订单
+        if self.game_time.is_peak_hour():
+            # 可以在这里触发更多订单生成
+            pass
+    
+    def on_new_day(self, day_number):
+        """时间事件回调：新的一天"""
+        # 重置每日统计
+        self.game_state.stats.daily_orders = 0
+        self.game_state.stats.daily_earnings = 0.0
+        self.game_state.stats.daily_tips = 0.0
+        
+        # 恢复一些体力
+        self.game_state.attributes.stamina = min(100, self.game_state.attributes.stamina + 20)
+        
+        messagebox.showinfo("新的一天", f"第{day_number}天开始了！体力恢复20点")
+    
+    # === 新增：核心更新方法 ===
+    def update_status_vars(self):
+        """更新状态显示变量 - 核心方法"""
+        try:
+            # === 新增：更新游戏时间显示 ===
+            self.game_date_var.set(self.game_time.get_formatted_date())
+            self.game_time_var.set(self.game_time.get_formatted_time())
+            
+            time_of_day = self.game_time.get_time_of_day().value
+            if self.game_time.is_peak_hour():
+                time_of_day += " (高峰期)"
+            self.time_period_var.set(time_of_day)
+            
+            # 更新配送状态
+            if self.current_delivery and self.delivery_end_time:
+                if self.game_time.current_game_time >= self.delivery_end_time:
+                    # 配送完成
+                    self.finish_delivery()
+                else:
+                    remaining_minutes = int((self.delivery_end_time - self.game_time.current_game_time).total_seconds() / 60)
+                    self.delivery_status_var.set(f"配送中... 剩余{remaining_minutes}分钟")
+            else:
+                if self.game_time.is_peak_hour():
+                    self.delivery_status_var.set("高峰期 - 订单较多")
+                elif self.game_time.is_late_night():
+                    self.delivery_status_var.set("深夜 - 注意安全")
+                else:
+                    self.delivery_status_var.set("空闲中")
+            
+            # 更新玩家信息显示
+            self.player_name_var.set("配送员小王")
+            self.level_var.set(f"等级: {self.game_state.attributes.level}")
+            self.experience_var.set(f"经验: {self.game_state.attributes.experience}/100")
+            self.credit_var.set(f"信用分: {self.game_state.attributes.credit_score}")
+            
+            # 更新财务信息显示
+            self.delivery_coins_var.set(f"外卖币: ¥{self.game_state.finances.delivery_coins:,.2f}")
+            self.savings_var.set(f"存款: ¥{self.game_state.finances.savings:,.2f}")
+            self.debt_var.set(f"负债: ¥{self.game_state.finances.debt:,.2f}")
+            
+            # 更新状态信息显示
+            self.weather_var.set(f"天气: {self.game_state.weather.value}")
+            self.location_var.set(f"位置: {self.game_state.current_location.value}")
+            self.stamina_var.set(f"体力: {self.game_state.attributes.stamina}/100")
+            
+            # 更新统计信息显示
+            self.orders_today_var.set(f"完成订单: {self.game_state.stats.successful_deliveries}")
+            self.earnings_today_var.set(f"今日收入: ¥{self.game_state.stats.total_earnings:,.2f}")
+            self.tips_today_var.set(f"今日小费: ¥{self.game_state.stats.total_tips:,.2f}")
+            
+        except Exception as e:
+            print(f"更新状态显示错误: {e}")
+    
+    # === 修改：配送相关方法 ===
+    def start_delivery_with_time(self, order):
+        """开始配送（与时间系统集成）"""
+        if self.current_delivery:
+            messagebox.showwarning("警告", "已有配送任务进行中")
+            return
+        
+        # 计算配送时间（考虑时间段影响）
+        base_time = order.estimated_time
+        time_modifier = self.game_time.get_delivery_time_modifier()
+        actual_time = int(base_time * time_modifier)
+        
+        # 天气影响
+        weather_modifier = {
+            WeatherType.SUNNY: 1.0,
+            WeatherType.RAINY: 1.3,
+            WeatherType.SNOWY: 1.5,
+            WeatherType.WINDY: 1.1
+        }.get(self.game_state.weather, 1.0)
+        
+        actual_time = int(actual_time * weather_modifier)
+        
+        # 设置配送结束时间
+        self.current_delivery = order
+        self.delivery_end_time = self.game_time.current_game_time + timedelta(minutes=actual_time)
+        
+        # 立即推进一点时间（表示出发）
+        self.game_time.advance_time(2)
+        
+        self.update_status_vars()
+        
+        messagebox.showinfo("开始配送", 
+                          f"开始配送订单！\n"
+                          f"预计配送时间: {actual_time}分钟\n"
+                          f"当前时间: {self.game_time.get_formatted_time()}\n"
+                          f"预计完成: {self.delivery_end_time.strftime('%H:%M')}")
+    
+    def finish_delivery(self):
+        """完成配送"""
+        if not self.current_delivery:
+            return
+        
+        order = self.current_delivery
+        
+        # 模拟配送结果
+        result = self.delivery_simulator.simulate_delivery(order)
+        
+        # 更新游戏状态
+        if result['success']:
+            self.game_state.finances.delivery_coins += result['earnings']
+            self.game_state.stats.successful_deliveries += 1
+            self.game_state.stats.total_earnings += result['earnings']
+            self.game_state.stats.total_tips += result['tip']
+            self.game_state.attributes.experience += result['experience_gained']
+            
+            # 检查升级
+            if self.game_state.attributes.experience >= 100:
+                self.game_state.attributes.level += 1
+                self.game_state.attributes.experience = 0
+                messagebox.showinfo("升级", f"恭喜升级到 {self.game_state.attributes.level} 级！")
+            
+            # 根据时间段给予额外奖励
+            time_bonus = 0
+            if self.game_time.is_peak_hour():
+                time_bonus = result['earnings'] * 0.2  # 高峰期20%奖励
+                self.game_state.finances.delivery_coins += time_bonus
+            elif self.game_time.is_late_night():
+                time_bonus = result['earnings'] * 0.3  # 深夜30%奖励
+                self.game_state.finances.delivery_coins += time_bonus
+            
+            message = f"配送成功！\n"
+            message += f"完成时间: {self.game_time.get_formatted_time()}\n"
+            message += f"收入: ¥{result['earnings']:.2f}\n"
+            if result['tip'] > 0:
+                message += f"小费: ¥{result['tip']:.2f}\n"
+            if time_bonus > 0:
+                time_type = "高峰期" if self.game_time.is_peak_hour() else "深夜"
+                message += f"{time_type}奖励: ¥{time_bonus:.2f}\n"
+            
+            messagebox.showinfo("配送完成", message)
+        else:
+            messagebox.showerror("配送失败", "配送过程中发生意外")
+        
+        # 清除当前配送
+        self.current_delivery = None
+        self.delivery_end_time = None
+        
+        # 更新显示
+        self.update_status_vars()
+    
+    # === 新增：测试方法 ===
+    def test_advance_hour(self):
+        """测试：推进1小时"""
+        self.game_time.advance_time(60)
+        self.update_status_vars()
+        messagebox.showinfo("测试", f"时间推进1小时，当前时间: {self.game_time.get_formatted_time()}")
+    
+    # === 修改：休息方法 ===
+    def rest_action(self):
+        """休息恢复体力 - 消耗游戏时间"""
+        if self.game_state.attributes.stamina >= 100:
+            messagebox.showinfo("提示", "体力已满，无需休息")
+            return
+        
+        if self.current_delivery:
+            messagebox.showwarning("警告", "配送中无法休息")
+            return
+        
+        rest_cost = 10.0
+        if self.game_state.finances.delivery_coins >= rest_cost:
+            self.game_state.finances.delivery_coins -= rest_cost
+            self.game_state.attributes.stamina = min(100, self.game_state.attributes.stamina + 30)
+            self.game_state.fatigue_level = max(0, self.game_state.fatigue_level - 20)
+            
+            # 休息消耗30分钟游戏时间
+            self.game_time.advance_time(30)
+            
+            self.update_status_vars()
+            
+            messagebox.showinfo("休息完成", 
+                              f"体力恢复30点，疲劳度降低20点\n"
+                              f"消耗时间: 30分钟\n"
+                              f"当前时间: {self.game_time.get_formatted_time()}")
+        else:
+            messagebox.showerror("资金不足", "休息需要¥10.00")
+    
+    # 游戏循环和更新方法
+    def start_game_loop(self):
+        """启动游戏循环"""
+        def game_loop():
+            while self.game_running:
+                try:
+                    self.update_game_state()
+                    time.sleep(1)  # 每秒更新一次
+                except Exception as e:
+                    print(f"游戏循环错误: {e}")
+                    break
+        
+        self.game_thread = threading.Thread(target=game_loop, daemon=True)
+        self.game_thread.start()
+        
+        # 启动GUI更新
+        self.update_gui()
+    
+    def update_game_state(self):
+        """更新游戏状态"""
+        # === 新增：更新游戏时间 ===
+        self.game_time.update_time()
+        
+        # 更新股票价格
+        self.stock_market.update_prices()
+        
+        # 更新持仓
+        self.portfolio.update_positions(self.stock_market)
+        
+        # 处理疲劳值（基于游戏时间）
+        if self.game_time.is_late_night() and random.random() < 0.01:
+            self.game_state.attributes.stamina = max(0, self.game_state.attributes.stamina - 1)
+    
+    def update_gui(self):
+        """更新GUI界面"""
+        try:
+            # 更新状态面板
+            self.update_status_vars()
+            
+            # 更新股票数据
+            if hasattr(self, 'stock_tree'):
+                self.root.after_idle(self.update_stock_data)
+            
+            # 更新持仓信息
+            if hasattr(self, 'position_text'):
+                self.root.after_idle(self.update_position_display)
+            
+        except Exception as e:
+            print(f"GUI更新错误: {e}")
+        
+        # 每3秒更新一次
+        self.root.after(3000, self.update_gui)
+    
+    # === 修改原有的配送方法 ===
+    def start_delivery(self):
+        """开始配送"""
+        if not self.selected_order or self.selected_order.status != "已接单":
+            messagebox.showwarning("警告", "没有可配送的订单")
+            return
+        
+        # 使用新的时间集成配送方法
+        self.start_delivery_with_time(self.selected_order)
+        
+        # 清除选中的订单
+        self.selected_order = None
+        self.order_detail_text.delete(1.0, tk.END)
+    
+    # 其余方法保持不变...
+    def modify_delivery_coins(self, amount):
+        """修改外卖币"""
+        self.game_state.finances.delivery_coins += amount
+        self.update_status_vars()
+    
+    def modify_stamina(self, amount):
+        """修改体力"""
+        self.game_state.attributes.stamina = max(0, min(100, self.game_state.attributes.stamina + amount))
+        self.update_status_vars()
+    
+    def modify_experience(self, amount):
+        """修改经验值"""
+        self.game_state.attributes.experience += amount
+        while self.game_state.attributes.experience >= 100:
+            self.game_state.attributes.level += 1
+            self.game_state.attributes.experience -= 100
+            messagebox.showinfo("升级", f"恭喜升级到 {self.game_state.attributes.level} 级！")
+        self.update_status_vars()
+    
+    def complete_order_simulation(self):
+        """模拟完成订单"""
+        self.game_state.stats.successful_deliveries += 1
+        earning = random.uniform(8, 25)
+        tip = random.uniform(0, 5)
+        self.game_state.stats.total_earnings += earning
+        self.game_state.stats.total_tips += tip
+        self.game_state.finances.delivery_coins += earning + tip
+        self.modify_experience(random.randint(5, 15))
+        self.modify_stamina(-random.randint(5, 15))
+        
+        # 推进一些时间
+        self.game_time.advance_time(random.randint(15, 45))
+        self.update_status_vars()
+    
+    def change_weather(self):
+        """改变天气"""
+        weathers = [WeatherType.SUNNY, WeatherType.RAINY, WeatherType.SNOWY, WeatherType.WINDY]
+        self.game_state.weather = random.choice(weathers)
+        self.update_status_vars()
+    
+    def test_add_coins(self):
+        """测试：增加金币"""
+        self.modify_delivery_coins(100)
+        messagebox.showinfo("测试", "外卖币 +¥100.00")
+    
+    def test_consume_stamina(self):
+        """测试：消耗体力"""
+        self.modify_stamina(-20)
+        messagebox.showinfo("测试", "体力 -20")
+    
+    def test_complete_order(self):
+        """测试：完成订单"""
+        self.complete_order_simulation()
+        messagebox.showinfo("测试", "完成一个订单！")
+    
+    def test_change_weather(self):
+        """测试：改变天气"""
+        self.change_weather()
+        messagebox.showinfo("测试", f"天气变为: {self.game_state.weather.value}")
+
     
     def setup_main_tabs(self):
         """设置主要选项卡"""

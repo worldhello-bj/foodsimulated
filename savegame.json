@@ -1,0 +1,38 @@
+{
+  "player_name": "",
+  "current_time": "2025-05-24T17:13:55.943190",
+  "weather": "晴天",
+  "attributes": {
+    "direction_sense": 1,
+    "emotional_intelligence": 1,
+    "education_level": 1,
+    "stamina": 22,
+    "credit_score": 100,
+    "experience": 0,
+    "level": 1
+  },
+  "finances": {
+    "delivery_coins": 108.5,
+    "credit_points": 100,
+    "debt": 50000.0,
+    "monthly_rent": 2000.0,
+    "savings": 0.0,
+    "medical_insurance": false
+  },
+  "equipment": {
+    "battery_capacity": 100,
+    "rain_cover": false,
+    "cargo_rack_reinforced": false,
+    "uniform_quality": "basic"
+  },
+  "stats": {
+    "total_orders": 0,
+    "successful_deliveries": 0,
+    "complaints": 0,
+    "five_star_ratings": 0,
+    "total_earnings": 0.0,
+    "total_tips": 0.0
+  },
+  "fatigue_level": 0,
+  "current_location": "蚂蚁窝"
+}

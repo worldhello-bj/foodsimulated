@@ -15,6 +15,7 @@ class WeatherType(Enum):
     SUNNY = "晴天"
     RAINY = "雨天"
     STORMY = "暴雨"
+    SNOWY = "雪天"  # 添加此行
     FOGGY = "雾霾"
     TYPHOON = "台风"
 
