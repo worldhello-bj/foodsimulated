@@ -12,6 +12,7 @@ import numpy as np
 from datetime import datetime
 import threading
 import time
+import tkinter.font as tkfont
 import random
 
 from game_core import GameState, WeatherType, DistrictType
@@ -28,6 +29,19 @@ class GameGUI:
         self.root.title("送外卖模拟器 - Food Delivery Simulator")
         self.root.geometry("1400x900")
         self.root.configure(bg='#f0f0f0')
+
+        default_font = tkfont.nametofont("TkDefaultFont")
+        default_font.configure(size=14)
+        self.root.option_add("*Font", default_font)
+
+        style = ttk.Style()
+        style.configure('.', font=('Arial', 14))
+        style.configure('TButton', font=('Arial', 14))
+        style.configure('TLabel', font=('Arial', 14))
+        style.configure('TEntry', font=('Arial', 14))
+        style.configure('TNotebook.Tab', font=('Arial', 14, 'bold'))
+        style.configure('Treeview.Heading', font=('Arial', 14, 'bold'))
+        style.configure('Treeview', font=('Arial', 13))
         
         # 游戏系统初始化
         self.game_state = GameState()
@@ -706,7 +720,7 @@ class GameGUI:
         selection = self.order_tree.selection()
         if selection:
             item = self.order_tree.item(selection[0])
-            order_id_short = item['values'][0]
+            order_id_short = str(item['values'][0])
             
             # 找到对应的完整订单
             for order in self.available_orders:
@@ -743,6 +757,25 @@ class GameGUI:
         self.order_detail_text.delete(1.0, tk.END)
         self.order_detail_text.insert(1.0, details)
     
+    def reject_order(self):
+        """拒绝订单"""
+        if not self.selected_order:
+            messagebox.showwarning("警告", "请先选择一个订单")
+            return
+        
+        # 显示拒绝确认
+        if messagebox.askyesno("确认拒绝", f"确定要拒绝订单 {self.selected_order.order_id[-6:]} 吗？"):
+            # 从可用订单列表中移除
+            self.available_orders.remove(self.selected_order)
+            
+            # 清除选中的订单
+            self.selected_order = None
+            self.order_detail_text.delete(1.0, tk.END)
+            
+            # 刷新订单列表
+            self.refresh_orders()
+            
+            messagebox.showinfo("已拒绝", "订单已拒绝")
     def accept_order(self):
         """接受订单"""
         if not self.selected_order:
